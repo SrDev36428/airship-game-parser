@@ -1,75 +1,74 @@
 export class Start extends Phaser.Scene {
     constructor() {
-        super('Start'); // Call the Phaser.Scene constructor with key 'Start'
+        super('Start');
 
-        // Initialize variables
-        this.initShip = 36; // Starting frame index for accessories
-        this.target = null; // Target position where the ship moves
-        this.isMouseDown = false; // Track if mouse is pressed down
-        this.speed = 100; // Movement speed in pixels per second
-        this.currentAngle = 0; // Current movement angle (in radians)
+        // Target position to move towards
+        this.target = null;
+        this.isMouseDown = false; // Whether mouse is being held down
+        this.speed = 100;          // Movement speed (pixels per second)
+        this.currentAngle = 0;     // Current rotation angle of ship (radians)
+        this.arrived = false;      // Whether the ship has arrived at target
     }
 
     preload() {
-        // Load images and spritesheets
-        this.load.image('background', 'assets/background/screenshot.png'); // Background image
-        this.load.image('sun', 'assets/background/sun.png'); // Sun image
-        this.load.spritesheet('ship', 'assets/ship/ship93.png', { frameWidth: 225, frameHeight: 225 }); // Accessories sprite sheet (72 frames)
-        this.load.spritesheet('venga', 'assets/ship/venga.png', { frameWidth: 164, frameHeight: 118 }); // Main ship sprite sheet (32 frames)
+        // Load background and sun images
+        this.load.image('background', 'assets/background/screenshot.png');
+        this.load.image('sun', 'assets/background/sun.png');
+
+        // Load ship spritesheets (animations with multiple frames)
+        this.load.spritesheet('ship', 'assets/ship/ship93.png', { frameWidth: 225, frameHeight: 225 });
+        this.load.spritesheet('venga', 'assets/ship/venga.png', { frameWidth: 164, frameHeight: 118 });
     }
 
     create() {
-        // Add and resize the background
+        // Add and scale background
         const bg = this.add.image(0, 0, 'background').setOrigin(0);
-        bg.setDisplaySize(this.scale.width, this.scale.height); // Stretch background to full screen
+        bg.setDisplaySize(this.scale.width, this.scale.height);
 
-        // Add the sun image at the center
+        // Add sun decoration at center
         this.sun = this.add.image(this.scale.width / 2, this.scale.height / 2, 'sun').setScale(0.5);
 
-        // Add the main ship sprite at 3/4 width and center height
-        this.ship = this.add.sprite(this.scale.width * 3 / 4, this.scale.height / 2, 'venga', 0)
-            .setScale(0.7) // Resize ship
-            .setInteractive(); // Make ship interactive (clickable)
+        // Add the main ship (venga) and make it interactive (clickable)
+        this.ship = this.add.sprite(this.scale.width * 1 / 4, this.scale.height / 2, 'venga', 0)
+            .setScale(0.7)
+            .setInteractive();
 
-        // Prepare accessories list
+        // Create accessory sprites (attached to ship)
         this.accessories = [];
+        this.accessories.push(this.add.sprite(this.ship.x, this.ship.y, 'ship', 0).setScale(0.4));
+        this.accessories.push(this.add.sprite(this.ship.x, this.ship.y, 'ship', 0).setScale(0.4));
 
-        // Set accessory offset positions relative to the ship
-        const accessoryOffsets = [
-            { x: 100, y: -80 }, // Top-right offset
-            { x: 100, y: 80 }   // Bottom-right offset
+        // Define offsets for accessories relative to ship position
+        this.accessoryOffsets = [
+            { x: 100, y: -80 },
+            { x: 100, y: 80 }
         ];
 
-        // Create accessories and attach to ship
-        accessoryOffsets.forEach(offset => {
-            const acc = this.add.sprite(this.ship.x + offset.x, this.ship.y + offset.y, 'ship', 0).setScale(0.4);
-            acc.setFrame(this.initShip); // Set initial frame
-            acc.setInteractive(); // Make accessory interactive
-            acc.offset = offset; // Save relative position
-            this.accessories.push(acc); // Add to list
-        });
+        /** --- Setup Input Events --- */
 
-        // Setup input event: pointer down
+        // Handle mouse down (left click)
         this.input.on('pointerdown', (pointer, gameObjects) => {
             if (gameObjects.length === 0) {
-                // Clicked empty space: set target position
+                // If clicked on empty space, set target to mouse position
                 this.target = { x: pointer.x, y: pointer.y };
                 this.isMouseDown = true;
+                this.arrived = true;
             } else {
-                // Clicked on ship or accessories: do nothing
+                // If clicked on a ship or accessory, ignore
                 this.target = null;
             }
         });
 
-        // Setup input event: pointer up
+        // Handle mouse release
         this.input.on('pointerup', () => {
-            this.isMouseDown = false; // Stop tracking mouse movement
+            this.isMouseDown = false;
+            this.arrived = false;
         });
 
-        // Setup input event: pointer move
+        // Handle mouse move while dragging
         this.input.on('pointermove', (pointer, gameObjects) => {
-            if (this.isMouseDown) {
-                // Update target while dragging mouse
+            if (this.isMouseDown & this.arrived) {
+                // Continuously update target while mouse is held
                 this.target = { x: pointer.x, y: pointer.y };
             }
         });
@@ -78,7 +77,8 @@ export class Start extends Phaser.Scene {
     update(time, delta) {
         let targetX, targetY;
 
-        if (this.isMouseDown) {
+        // Update target coordinates based on whether mouse is held
+        if (this.isMouseDown & this.arrived) {
             const pointer = this.input.activePointer;
             targetX = pointer.x;
             targetY = pointer.y;
@@ -87,55 +87,59 @@ export class Start extends Phaser.Scene {
             targetY = this.target.y;
         }
 
+        // If we have a valid target, move towards it
         if (targetX !== undefined) {
-            const distance = Phaser.Math.Distance.Between(this.ship.x, this.ship.y, targetX, targetY);
+            const dx = targetX - this.ship.x;
+            const dy = targetY - this.ship.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
 
-            if (distance < 5) {
-                // Close enough: snap to target without changing angle
-                this.ship.x = targetX;
-                this.ship.y = targetY;
+            if (distance > 5) {
+                // Move towards the target
+                const angle = Math.atan2(dy, dx);
+                const vx = Math.cos(angle) * this.speed * (delta / 1000);
+                const vy = Math.sin(angle) * this.speed * (delta / 1000);
 
-                if (!this.isMouseDown) this.target = null; // Clear target if not dragging
-
+                this.ship.x += vx;
+                this.ship.y += vy;
+                this.currentAngle = angle; // Save angle for rotation updates
             } else {
-                // Only update angle if actually moving
-                this.currentAngle = Phaser.Math.Angle.Between(this.ship.x, this.ship.y, targetX, targetY);
-
-                const velocityX = Math.cos(this.currentAngle) * this.speed * (delta / 1000);
-                const velocityY = Math.sin(this.currentAngle) * this.speed * (delta / 1000);
-
-                this.ship.x += velocityX;
-                this.ship.y += velocityY;
+                // Stop moving if close enough
+                if (this.arrived) {
+                    this.arrived = false;
+                }
             }
-
-            // These can happen always
-            this.updateVengaFrames();
-            this.updateShipFrames();
-            this.accessories.forEach(acc => {
-                acc.x = this.ship.x + acc.offset.x;
-                acc.y = this.ship.y + acc.offset.y;
-            });
         }
-    }
 
+        // Update animation frames based on current angle
+        this.updateVengaFrames();
+        this.updateShip93Frames();
+
+        // Update accessory positions based on ship's position and rotation
+        this.accessories.forEach((accessory, index) => {
+            const offset = this.accessoryOffsets[index];
+
+            // Rotate offset around ship
+            const offsetX = Math.cos(this.currentAngle) * offset.x - Math.sin(this.currentAngle) * offset.y;
+            const offsetY = Math.sin(this.currentAngle) * offset.x + Math.cos(this.currentAngle) * offset.y;
+
+            accessory.x = this.ship.x - offsetX;
+            accessory.y = this.ship.y - offsetY;
+        });
+    }
 
     updateVengaFrames() {
-        // Calculate the frame for the main ship based on the angle
-        let degrees = Phaser.Math.RadToDeg(this.currentAngle) + 180; // Convert radians to degrees
-        degrees = (degrees + 360) % 360; // Normalize 0-360 degrees
-
-        const vengaFrame = Math.round((degrees / 360) * 31) % 32; // 32 frames
-        this.ship.setFrame(vengaFrame); // Set ship frame
+        // Update the venga ship frame to match the direction (360° mapped to 32 frames)
+        let degrees = Phaser.Math.RadToDeg(this.currentAngle) + 180;
+        degrees = (degrees + 360) % 360; // Normalize between 0–360
+        const frame = Math.round((degrees / 360) * 31) % 32; // 32 frames total
+        this.ship.setFrame(frame);
     }
 
-    updateShipFrames() {
-        // Calculate frame for accessories
+    updateShip93Frames() {
+        // Update accessory frames to match ship's rotation (360° mapped to 72 frames)
         let degrees = Phaser.Math.RadToDeg(this.currentAngle);
-        const inverseDegrees = (360 - degrees) % 360; // Inverse because accessories are flipped
-
-        const ship93Frame = Math.round((inverseDegrees / 360) * 71) % 72; // 72 frames
-        this.accessories.forEach(acc => {
-            acc.setFrame(ship93Frame); // Set accessory frame
-        });
+        const inverseDegrees = (360 - degrees) % 360;
+        const frame = Math.round((inverseDegrees / 360) * 71) % 72; // 72 frames total
+        this.accessories.forEach(acc => acc.setFrame(frame));
     }
 }
